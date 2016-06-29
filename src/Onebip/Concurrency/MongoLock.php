@@ -1,13 +1,13 @@
 <?php
 namespace Onebip\Concurrency;
-use MongoCollection;
-use MongoCursorException;
-use MongoDate;
+
+use DateInterval;
 use DateTime;
 use DateTimeZone;
-use DateInterval;
+use MongoDB;
 use Onebip\Clock;
 use Onebip\Clock\SystemClock;
+use Onebip\DateTime\UTCDateTime;
 
 class MongoLock implements Lock
 {
@@ -15,10 +15,10 @@ class MongoLock implements Lock
     private $processName;
     const DUPLICATE_KEY = 11000;
 
-    public function __construct(MongoCollection $collection, $programName, $processName, $clock = null, $sleep = 'sleep')
+    public function __construct(MongoDB\Collection $collection, $programName, $processName, $clock = null, $sleep = 'sleep')
     {
         $this->collection = $collection;
-        $this->collection->ensureIndex(['program' => 1], ['unique' => true]);
+        $this->collection->createIndex(['program' => 1], ['unique' => true]);
         $this->programName = $programName;
         $this->processName = $processName;
         if ($clock === null) {
@@ -28,7 +28,7 @@ class MongoLock implements Lock
         $this->sleep = $sleep;
     }
 
-    public static function forProgram($programName, MongoCollection $collection)
+    public static function forProgram($programName, MongoDB\Collection $collection)
     {
         return new self($collection, $programName, gethostname() . ':' . getmypid());
     }
@@ -43,14 +43,14 @@ class MongoLock implements Lock
         $expiration->add(new DateInterval("PT{$duration}S"));
 
         try {
-            $this->collection->insert([
+            $this->collection->insertOne([
                 'program' => $this->programName,
                 'process' => $this->processName,
-                'acquired_at' => new MongoDate($now->getTimestamp()),
-                'expires_at' => new MongoDate($expiration->getTimestamp()),
+                'acquired_at' => $this->dateTimeToMongo($now),
+                'expires_at' => $this->dateTimeToMongo($expiration),
             ]);
-        } catch (MongoCursorException $e) {
-            if ($e->getCode() == self::DUPLICATE_KEY) {
+        } catch (MongoDB\Driver\Exception\BulkWriteException $e) {
+            if (strpos($e->getMessage(), 'E11000') === 0) {
                 throw new LockNotAvailableException(
                     "{$this->processName} cannot acquire a lock for the program {$this->programName}"
                 );
@@ -68,9 +68,9 @@ class MongoLock implements Lock
         $expiration = clone $now;
         $expiration->add(new DateInterval("PT{$duration}S"));
 
-        $result = $this->collection->update(
+        $result = $this->collection->updateOne(
             ['program' => $this->programName, 'process' => $this->processName],
-            ['$set' => ['expires_at' => new MongoDate($expiration->getTimestamp())]]
+            ['$set' => ['expires_at' => $this->dateTimeToMongo($expiration)]]
         );
 
         if (!$this->lockRefreshed($result)) {
@@ -83,11 +83,14 @@ class MongoLock implements Lock
     public function show()
     {
         $document = $this->collection->findOne(
-            ['program' => $this->programName]
+            ['program' => $this->programName],
+            ['typeMap' => ['root' => 'array']]
         );
         if (!is_null($document)) {
-            $this->convertToIso8601String($document['acquired_at']);
-            $this->convertToIso8601String($document['expires_at']);
+            $document['acquired_at'] =
+                $this->convertToIso8601String($document['acquired_at']);
+            $document['expires_at'] =
+                $this->convertToIso8601String($document['expires_at']);
             unset($document['_id']);
         }
         return $document;
@@ -99,9 +102,9 @@ class MongoLock implements Lock
         if (!$force) {
             $query['process'] = $this->processName;
         }
-        $operationResult = $this->collection->remove($query);
-        $affectedDocuments = $operationResult['n'];
-        if ($affectedDocuments != 1) {
+        $operationResult = $this->collection->deleteMany($query);
+
+        if ($operationResult->getDeletedCount() !== 1) {
             throw new LockNotAvailableException(
                 "{$this->processName} does not have a lock for {$this->programName} to release"
             );
@@ -117,9 +120,9 @@ class MongoLock implements Lock
         $timeLimit = $this->clock->current()->add(new DateInterval("PT{$maximumWaitingTime}S"));
         while (true) {
             $now = $this->clock->current();
-            $result = $this->collection->count($query = [
+            $result = $this->collection->count([
                 'program' => $this->programName,
-                'expires_at' => ['$gte' => new MongoDate($now->getTimestamp())],
+                'expires_at' => ['$gte' => $this->dateTimeToMongo($now)],
             ]);
 
             if ($result) {
@@ -137,30 +140,33 @@ class MongoLock implements Lock
 
     private function removeExpiredLocks(DateTime $now)
     {
-        $this->collection->remove($query = [
+        $this->collection->deleteMany([
             'program' => $this->programName,
             'expires_at' => [
-                '$lt' => new MongoDate($now->getTimestamp()),
+                '$lt' => $this->dateTimeToMongo($now),
             ],
         ]);
     }
 
-    private function convertToIso8601String(&$field)
+    private function convertToIso8601String(MongoDB\BSON\UTCDateTime $dateTime)
     {
-        $datetime = new DateTime();
-        $datetime->setTimestamp($field->sec);
-        $datetime->setTimezone(new DateTimeZone('UTC'));
-        $field = $datetime->format(DateTime::ISO8601);
+        return UTCDateTime::box($dateTime)->toIso8601();
     }
 
     private function lockRefreshed($result)
     {
-        if (isset($result['n'])) {
-            return $result['n'] === 1;
+        if ($result->getModifiedCount() === 1) {
+            return true;
         }
+
         // result is not known (write concern is not set) so we check to see if
         // a lock document exists, if lock document exists we are pretty sure
         // that its update succeded
         return !is_null($this->show());
+    }
+
+    private function dateTimeToMongo(DateTime $dateTime)
+    {
+        return UTCDateTime::box($dateTime)->toMongoUTCDateTime();
     }
 }

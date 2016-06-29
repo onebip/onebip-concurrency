@@ -1,13 +1,14 @@
 <?php
 namespace Onebip\Concurrency;
-use MongoCollection;
+
+use MongoDB;
 
 // TODO: converge MongoLockRepository and the HydraLockFactory
 class MongoLockRepository 
 {
     private $collection;
 
-    public function __construct(MongoCollection $collection)
+    public function __construct(MongoDB\Collection $collection)
     {
         $this->collection = $collection;
     }
@@ -31,6 +32,6 @@ class MongoLockRepository
      */
     public function removeAll()
     {
-        $this->collection->remove();
+        $this->collection->deleteMany([]);
     }
 }

@@ -2,7 +2,8 @@
     "name": "onebip/onebip-concurrency",
     "license": "MIT",
     "require": {
-        "onebip/onebip-clock": "dev-master"
+        "onebip/onebip-clock": "dev-master",
+        "mongodb/mongodb": "~1.0"
     },
     "require-dev": {
         "phpunit/phpunit": "@stable",
