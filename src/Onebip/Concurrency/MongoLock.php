@@ -14,6 +14,7 @@ class MongoLock implements Lock
     private $collection;
     private $processName;
     const DUPLICATE_KEY = 11000;
+    const INDEX_NAME = 'program_1';
 
     public function __construct(MongoCollection $collection, $programName, $processName, $clock = null, $sleep = 'sleep')
     {
@@ -32,10 +33,22 @@ class MongoLock implements Lock
         return new self($collection, $programName, gethostname() . ':' . getmypid());
     }
 
+    public static function ensureIndex(MongoCollection $collection)
+    {
+        $collection->ensureIndex(
+            ['program' => 1],
+            [
+                'unique' => true,
+                'name' => self::INDEX_NAME,
+            ]
+        );
+    }
+
     public function acquire($duration = 3600)
     {
         $now = $this->clock->current();
 
+        $this->ensureIndexIsPresent();
         $this->removeExpiredLocks($now);
 
         $expiration = clone $now;
@@ -161,5 +174,25 @@ class MongoLock implements Lock
         // a lock document exists, if lock document exists we are pretty sure
         // that its update succeded
         return !is_null($this->show());
+    }
+
+    private function ensureIndexIsPresent()
+    {
+        $present = false;
+
+        foreach ($this->collection->getIndexInfo() as $index) {
+            if ($index['name'] === self::INDEX_NAME) {
+                $present = true;
+                break;
+            }
+        }
+
+        if (!$present) {
+            throw new LockUniqueIndexNotAvailable(sprintf(
+                "%s collection `%s` is missing indexes, see MongoLock::ensureIndex",
+                $this->processName,
+                $this->collection->getName()
+            ));
+        }
     }
 }

@@ -15,6 +15,8 @@ class MongoLockTest extends \PHPUnit_Framework_TestCase
     public function setUp()
     {
         $this->lockCollection = (new MongoClient())->test->lock;
+        MongoLock::ensureIndex($this->lockCollection);
+
         $this->clock = Phake::mock('Onebip\Clock');
 
         $this->slept = [];
@@ -26,6 +28,24 @@ class MongoLockTest extends \PHPUnit_Framework_TestCase
     public function tearDown()
     {
         $this->lockCollection->drop();
+    }
+
+    /**
+     * @expectedException Onebip\Concurrency\LockUniqueIndexNotAvailable
+     * @expectedExceptionMessage ws-a-30:32 collection `lock` is missing indexes, see MongoLock::ensureIndex
+     */
+    public function testErrorWhenIndexIsNotPresent()
+    {
+        $this->lockCollection->deleteIndexes();
+
+        $lock = new MongoLock(
+            $this->lockCollection,
+            'windows_defrag',
+            'ws-a-30:32',
+            $this->clock
+        );
+
+        $lock->acquire();
     }
 
     public function testALockCanBeAcquired()
@@ -254,7 +274,7 @@ class MongoLockTest extends \PHPUnit_Framework_TestCase
                 return true;
             })
             ->then(function($sequencesOfSteps) {
-                $this->lockCollection->drop();
+                $this->lockCollection->remove();
                 $log = "/tmp/mongolock_{$this->iteration}.log";
                 if (file_exists($log)) {
                     unlink($log);
