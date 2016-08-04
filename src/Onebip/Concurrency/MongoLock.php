@@ -18,7 +18,6 @@ class MongoLock implements Lock
     public function __construct(MongoCollection $collection, $programName, $processName, $clock = null, $sleep = 'sleep')
     {
         $this->collection = $collection;
-        $this->collection->ensureIndex(['program' => 1], ['unique' => true]);
         $this->programName = $programName;
         $this->processName = $processName;
         if ($clock === null) {
