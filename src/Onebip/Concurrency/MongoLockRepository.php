@@ -12,6 +12,11 @@ class MongoLockRepository
         $this->collection = $collection;
     }
 
+    public function ensureIndex()
+    {
+        MongoLock::ensureIndex($this->collection);
+    }
+
     // TODO: expose only not expired locks
     public function all()
     {
