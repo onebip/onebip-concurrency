@@ -2,14 +2,14 @@
 
 namespace Onebip\Concurrency;
 
-use MongoCollection;
+use MongoDB\Collection;
 
 // TODO: converge MongoLockRepository and the HydraLockFactory
 class MongoLockRepository
 {
     private $collection;
 
-    public function __construct(MongoCollection $collection)
+    public function __construct(Collection $collection)
     {
         $this->collection = $collection;
     }
