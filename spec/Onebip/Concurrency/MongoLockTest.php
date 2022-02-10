@@ -8,12 +8,13 @@ use Eris;
 use Eris\Generator;
 use Symfony\Component\Process\Process;
 use PHPUnit\Framework\TestCase;
+use Onebip\Concurrency\LockNotAvailableException;
 
 class MongoLockTest extends TestCase
 {
     use Eris\TestTrait;
 
-    public function setUp()
+    public function setUp(): void
     {
         $this->lockCollection = (new MongoClient())->test->lock;
         $this->clock = Phake::mock('Onebip\Clock');
@@ -24,7 +25,7 @@ class MongoLockTest extends TestCase
         };
     }
 
-    public function tearDown()
+    public function tearDown(): void
     {
         $this->lockCollection->drop();
     }
@@ -37,19 +38,17 @@ class MongoLockTest extends TestCase
         $this->assertTrue(true, 'make PHPUnit happy');
     }
 
-    /**
-     * @expectedException Onebip\Concurrency\LockNotAvailableException
-     * @expectedExceptionMessage ws-a-30:23 cannot acquire a lock for the program windows_defrag
-     */
     public function testAnAlreadyAcquiredLockCannotBeAcquiredAgain()
     {
+        $this->expectException(LockNotAvailableException::class);
+        $this->expectExceptionMessage("ws-a-30:23 cannot acquire a lock for the program windows_defrag");
+
         $this->givenTimeIsFixed();
         $first = new MongoLock($this->lockCollection, 'windows_defrag', 'ws-a-25:42', $this->clock);
         $first->acquire();
 
         $second = new MongoLock($this->lockCollection, 'windows_defrag', 'ws-a-30:23', $this->clock);
         $second->acquire();
-        // $this->assertTrue(true, 'make PHPUnit happy');
     }
 
     public function testAnAlreadyAcquiredLockCanExpireSoThatItCanBeAcquiredAgain()
@@ -89,12 +88,11 @@ class MongoLockTest extends TestCase
         $this->assertTrue(true, 'make PHPUnit happy');
     }
 
-    /**
-     * @expectedException Onebip\Concurrency\LockNotAvailableException
-     * @expectedExceptionMessage ws-a-30:23 does not have a lock for windows_defrag to release
-     */
     public function testALockCannotBeReleasedBySomeoneElseThanTheProcessAcquiringIt()
     {
+        $this->expectException(LockNotAvailableException::class);
+        $this->expectExceptionMessage("ws-a-30:23 does not have a lock for windows_defrag to release");
+
         $this->givenTimeIsFixed();
         $first = new MongoLock($this->lockCollection, 'windows_defrag', 'ws-a-25:42', $this->clock);
         $first->acquire();
@@ -216,12 +214,11 @@ class MongoLockTest extends TestCase
         );
     }
 
-    /**
-     * @expectedException Onebip\Concurrency\LockNotAvailableException
-     * @expectedExceptionMessage ws-a-25:42 cannot acquire a lock for the program windows_defrag
-     */
     public function testAnExpiredLockCannotBeRefreshed()
     {
+        $this->expectException(LockNotAvailableException::class);
+        $this->expectExceptionMessage("ws-a-25:42 cannot acquire a lock for the program windows_defrag");
+
         Phake::when($this->clock)->current()
             ->thenReturn(new DateTime('2014-01-01T00:00:00Z'))
             ->thenReturn(new DateTime('2014-01-01T02:00:00Z'));
