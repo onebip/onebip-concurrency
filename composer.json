@@ -2,12 +2,12 @@
     "name": "onebip/onebip-concurrency",
     "license": "MIT",
     "require": {
-        "php": ">=5.6.0",
-        "onebip/onebip-clock": "dev-master"
+        "php": ">=7.4",
+        "onebip/onebip-clock": "dev-ubuntu20"
     },
     "require-dev": {
-        "phpunit/phpunit": "@stable",
-        "phake/phake": "~2.1",
+        "phpunit/phpunit": "^9",
+        "phake/phake": "3.1.9",
         "giorgiosironi/eris": "dev-master",
         "alcaeus/mongo-php-adapter": "^1.1",
         "symfony/process": "2.*"

@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 class InProcessRetryTest extends TestCase
 {
-    public function setUp()
+    public function setUp(): void
     {
         $this->count = 0;
         $this->counter = function() {
